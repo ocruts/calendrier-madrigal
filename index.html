@@ -252,21 +252,48 @@ function draw(t){frame=requestAnimationFrame(draw);if(document.hidden||t-last<30
 window.addEventListener('resize',resize,{passive:true});resize();frame=requestAnimationFrame(draw);
 })();
 
-// Musique facultative : démarrage uniquement après action du visiteur.
+// Musique de Noël : tentative au chargement, puis au premier geste si le navigateur bloque.
 (()=>{
  const audio=document.getElementById('christmasAudio');
  const toggle=document.getElementById('musicToggle');
  const volume=document.getElementById('musicVolume');
  const status=document.getElementById('musicStatus');
  const key='madrigal-music-volume-2026';
+ let manuallyStopped=false;
+ let attempting=false;
  try{const saved=Number(localStorage.getItem(key));if(localStorage.getItem(key)!==null&&Number.isFinite(saved))volume.value=Math.max(0,Math.min(100,saved));}catch(e){}
  audio.volume=Number(volume.value)/100;
  function update(){const playing=!audio.paused;toggle.textContent=playing?'🔇 Couper la musique':'🎵 Activer la musique';toggle.setAttribute('aria-pressed',String(playing));status.textContent=playing?'✨ Chimes (Christmas Fairytale) — whvle':'Musique désactivée';}
- toggle.addEventListener('click',async()=>{if(!audio.paused){audio.pause();update();return;}try{await audio.play();update();}catch(e){status.textContent='Impossible de lire la musique : vérifie musique-noel.mp3 sur GitHub.';}});
+ function removeFallback(){document.removeEventListener('pointerdown',firstGesture,true);document.removeEventListener('keydown',firstGesture,true);}
+ async function start(){
+  if(manuallyStopped||!audio.paused||attempting)return;
+  attempting=true;
+  try{await audio.play();removeFallback();update();}
+  catch(e){if(!manuallyStopped){status.textContent='🎵 La musique démarrera à votre première interaction.';}}
+  finally{attempting=false;}
+ }
+ function firstGesture(event){
+  if(event.target===toggle||event.target===volume||volume.contains(event.target))return;
+  if(event.type==='keydown'&&(event.key==='Tab'||event.key==='Shift'||event.key==='Control'||event.key==='Alt'||event.key==='Meta'))return;
+  if(manuallyStopped)return;
+  // Lancer dans le gestionnaire du geste pour conserver l'autorisation audio du navigateur.
+  start();
+ }
+ toggle.addEventListener('click',async()=>{
+  if(!audio.paused){manuallyStopped=true;audio.pause();removeFallback();update();return;}
+  manuallyStopped=false;
+  try{await audio.play();removeFallback();update();}
+  catch(e){status.textContent='Impossible de lire la musique : vérifie musique-noel.mp3 sur GitHub.';}
+ });
  volume.addEventListener('input',()=>{audio.volume=Number(volume.value)/100;try{localStorage.setItem(key,volume.value)}catch(e){}});
+ audio.addEventListener('play',update);
+ audio.addEventListener('pause',update);
  audio.addEventListener('ended',update);
- audio.addEventListener('error',()=>{status.textContent='Fichier musique-noel.mp3 introuvable ou illisible.';});
+ audio.addEventListener('error',()=>{removeFallback();status.textContent='Fichier musique-noel.mp3 introuvable ou illisible.';});
+ document.addEventListener('pointerdown',firstGesture,true);
+ document.addEventListener('keydown',firstGesture,true);
  update();
+ start();
 })();
 
 // Compte à rebours basé sur les composantes de l'heure de Paris (DST géré par Intl).
